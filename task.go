@@ -23,25 +23,44 @@ func initTask() {
 					cron := &Carrier{
 						Get: "data._id",
 					}
-					ql, err := Req(ql, cron, CRONS, POST, []byte(`{"name":"sillyGirl临时创建任务","command":"ql raw `+s.Get()+`","schedule":" 1 1 1 1 1"}`))
+					_, err := Req(ql, cron, CRONS, POST, []byte(`{"name":"sillyGirl临时创建任务","command":"ql raw `+s.Get()+`","schedule":" 1 1 1 1 1"}`))
 					if err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
+
 					if _, err := Req(ql, CRONS, PUT, "/run", []byte(fmt.Sprintf(`["%s"]`, cron.Value))); err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
+					if err != nil {
+						s.Reply(err.Error() + ql.GetTail())
+						continue
+					}
+
 					for {
-						time.Sleep(time.Microsecond * 300)
 						data, _ := GetCronLog(ql, cron.Value)
 						if strings.Contains(data, "执行结束...") {
-							s.Reply(data)
+							for _, v := range strings.Split(data, "\n") {
+								if strings.Contains(v, "添加成功") {
+									s.Reply(v + ql.GetTail())
+									goto oye
+								}
+							}
+							for _, v := range strings.Split(data, "\n") {
+								if strings.Contains(v, "成功...") {
+									s.Reply(v + ql.GetTail())
+									goto oye
+								}
+							}
+							s.Reply(data + ql.GetTail())
 							break
 						}
+						time.Sleep(time.Microsecond * 300)
 					}
+				oye:
 					if _, err := Req(ql, CRONS, DELETE, []byte(`["`+cron.Value+`"]`)); err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 				}
@@ -60,25 +79,25 @@ func initTask() {
 					cron := &Carrier{
 						Get: "data._id",
 					}
-					ql, err := Req(ql, cron, CRONS, POST, []byte(`{"name":"sillyGirl临时创建任务","command":"task `+s.Get()+`","schedule":" 1 1 1 1 1"}`))
+					_, err := Req(ql, cron, CRONS, POST, []byte(`{"name":"sillyGirl临时创建任务","command":"task `+s.Get()+`","schedule":" 1 1 1 1 1"}`))
 					if err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 					if _, err := Req(ql, CRONS, PUT, "/run", []byte(fmt.Sprintf(`["%s"]`, cron.Value))); err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 					for {
 						time.Sleep(time.Second)
 						data, _ := GetCronLog(ql, cron.Value)
 						if strings.Contains(data, "执行结束...") {
-							s.Reply(data)
+							s.Reply(data + ql.GetTail())
 							break
 						}
 					}
 					if _, err := Req(ql, cron, CRONS, DELETE, []byte(`["`+cron.Value+`"]`)); err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 				}
@@ -102,25 +121,25 @@ func initTask() {
 						"command":  `ql repo ` + s.Get(),
 						"schedule": "1 1 1 1 1",
 					})
-					ql, err := Req(ql, cron, CRONS, POST, data)
+					_, err := Req(ql, cron, CRONS, POST, data)
 					if err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 					if _, err := Req(ql, CRONS, PUT, "/run", []byte(fmt.Sprintf(`["%s"]`, cron.Value))); err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 					for {
 						time.Sleep(time.Second)
 						data, _ := GetCronLog(ql, cron.Value)
 						if strings.Contains(data, "执行结束...") {
-							s.Reply(data)
+							s.Reply(data + ql.GetTail())
 							break
 						}
 					}
 					if _, err := Req(ql, cron, CRONS, DELETE, []byte(`["`+cron.Value+`"]`)); err != nil {
-						s.Reply(err)
+						s.Reply(err.Error() + ql.GetTail())
 						continue
 					}
 				}

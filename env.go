@@ -1,6 +1,10 @@
 package qinglong
 
 import (
+	"errors"
+	"fmt"
+	"strings"
+
 	"github.com/cdle/sillyGirl/core"
 )
 
@@ -17,6 +21,10 @@ type Env struct {
 	Remarks   string `json:"remarks,omitempty"`
 	Timestamp string `json:"timestamp,omitempty"`
 	Created   int64  `json:"created,omitempty"`
+	PtPin     string `json:"-"`
+	PtKey     string `json:"-"`
+	AppKey    bool   `json:"-"`
+	Index     int    `json:"-"`
 }
 
 func GetEnv(ql *QingLong, id string) (*Env, error) {
@@ -29,7 +37,7 @@ func GetEnv(ql *QingLong, id string) (*Env, error) {
 			return &env, nil
 		}
 	}
-	return nil, nil
+	return nil, errors.New("无效ID。")
 }
 
 func GetEnvs(ql *QingLong, searchValue string) ([]Env, error) {
@@ -101,16 +109,66 @@ func UdpEnv(ql *QingLong, env Env) error {
 // 	return errors.New("找不到环境变量")
 // }
 
-func AddEnv(ql *QingLong, e Env) error {
-	e.Created = 0
-	e.Timestamp = ""
-	_, err := Req(ql, POST, ENVS, []Env{e})
+func AddEnv(ql *QingLong, es ...Env) error {
+	nn := []Env{}
+	for i := range es {
+		n := es[i]
+		n.Created = 0
+		n.Timestamp = ""
+		n.ID = ""
+		nn = append(nn, n)
+	}
+	_, err := Req(ql, POST, ENVS, nn)
 	return err
 }
 
-// func RemEnv(e *Env) error {
-// 	return Req(nil, DELETE, ENVS, []byte(`["`+e.ID+`"]`))
-// }
+func RemEnv(ql *QingLong, es ...Env) error {
+	v := []string{}
+	for i := range es {
+		v = append(v, fmt.Sprintf(`"%s"`, es[i].ID))
+	}
+	_, err := Req(ql, DELETE, ENVS, []byte(`[`+strings.Join(v, ",")+`]`))
+	return err
+}
+
+func DisableEnv(ql *QingLong, es ...Env) error {
+	v := []string{}
+	for i := range es {
+		v = append(v, fmt.Sprintf(`"%s"`, es[i].ID))
+	}
+	_, err := Req(ql, PUT, ENVS, "/disable", []byte(`[`+strings.Join(v, ",")+`]`))
+	return err
+}
+
+func DisableCron(ql *QingLong, es ...Cron) error {
+	v := []string{}
+	if ql.IsSqlite() {
+		for i := range es {
+			v = append(v, fmt.Sprintf(`%s`, es[i].ID))
+		}
+	} else {
+		for i := range es {
+			v = append(v, fmt.Sprintf(`"%s"`, es[i].ID))
+		}
+	}
+	_, err := Req(ql, PUT, CRONS, "/disable", []byte(`[`+strings.Join(v, ",")+`]`))
+	return err
+}
+
+func EnableCron(ql *QingLong, es ...Cron) error {
+	v := []string{}
+	if ql.IsSqlite() {
+		for i := range es {
+			v = append(v, fmt.Sprintf(`%s`, es[i].ID))
+		}
+	} else {
+		for i := range es {
+			v = append(v, fmt.Sprintf(`"%s"`, es[i].ID))
+		}
+	}
+	_, err := Req(ql, PUT, CRONS, "/enable", []byte(`[`+strings.Join(v, ",")+`]`))
+	return err
+}
 
 func initEnv() {
 	core.AddCommand("ql", []core.Function{

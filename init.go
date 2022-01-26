@@ -23,12 +23,17 @@ type QingLong struct {
 	Token          string `json:"-"`
 	Error          error  `json:"-"`
 	Default        bool   `json:"default"`
+	Disable        bool   `json:"disable"`
+	Transfer       bool   `json:"transfer"`
 	AggregatedMode bool   `json:"aggregated_mode"`
 	sync.RWMutex
 	idSqlite bool   `json:"-"`
 	Name     string `json:"name"`
 	Number   int    `json:"-"`
 	try      int    `json:"-"`
+	Weight   int    `json:"weight"`
+	Pins     string `json:"pins"`
+	Chetou   string `json:"chetou"`
 }
 
 // var Config *QingLong
@@ -42,6 +47,27 @@ func GetQLS() []*QingLong {
 	return qLS
 }
 
+func GetTsQl() (error, *QingLong) {
+	qLSLock.RLock()
+	defer qLSLock.RUnlock()
+	for i := range qLS {
+		if qLS[i].Transfer {
+			return nil, qLS[i]
+		}
+	}
+	for i := range qLS {
+		if qLS[i].AggregatedMode {
+			return nil, qLS[i]
+		}
+	}
+	for i := range qLS {
+		if !qLS[i].AggregatedMode {
+			return nil, qLS[i]
+		}
+	}
+	return errors.New("未配置容器。"), nil
+}
+
 func GetQLSLen() int {
 	qLSLock.RLock()
 	defer qLSLock.RUnlock()
@@ -51,7 +77,16 @@ func GetQLSLen() int {
 func SetQLS(qls []*QingLong) {
 	qLSLock.Lock()
 	defer qLSLock.Unlock()
-	qLS = qls
+	nn := []*QingLong{}
+	for _, ql := range qls {
+		if !ql.Disable {
+			if ql.Weight == 0 {
+				ql.Weight = 1
+			}
+			nn = append(nn, ql)
+		}
+	}
+	qLS = nn
 }
 
 var expiration int64
@@ -89,8 +124,12 @@ func init() {
 					json.Unmarshal([]byte(sss), &nn)
 					t := ""
 					ju := ""
+					jy := ""
+					ts := ""
 				hh:
 					ls = []string{}
+					ps := qinglong.Get("pins")
+					ct := qinglong.Get("chetou")
 					cs := []chan bool{}
 					for i := range nn {
 						c := make(chan bool)
@@ -118,18 +157,23 @@ func init() {
 						if nn[i].AggregatedMode {
 							t = append(t, "聚合")
 						}
-
+						if nn[i].Disable {
+							t = append(t, "禁用")
+						}
+						if nn[i].Transfer {
+							t = append(t, "转换")
+						}
 						s := ""
 						if len(t) > 0 {
 							s = fmt.Sprintf("[%s]", strings.Join(t, ","))
 						}
 						ls = append(ls, fmt.Sprintf("%d. %s %s", i+1, nn[i].Name, s))
 					}
-					s.Reply("请选择容器进行编辑：(-删除，0增加，q退出, wq保存)\n" + strings.Join(ls, "\n"))
+					s.Reply("请选择对象进行编辑：(-删除容器，0增加容器，q退出, wq保存)\n" + strings.Join(ls, "\n"))
 					r := s.Await(s, nil)
 					is := r.(string)
 					i := 0
-					if is == "wq" || is == "qw" {
+					if is == "wq" || is == "qw" || is == "wq!" {
 						goto save
 					}
 					if is == "q" {
@@ -189,14 +233,46 @@ func init() {
 						} else {
 							ju = "开启聚合模式"
 						}
+
+						if ql.Disable {
+							jy = "启用容器"
+						} else {
+							jy = "禁用容器"
+						}
+
+						if ql.Transfer {
+							ts = "移除转换标记"
+						} else {
+							ts = "设置转换标记"
+						}
+
+						if ql.Weight == 0 {
+							ql.Weight = 1
+						}
+
+						host := ql.Host
+						ClientSecret := ql.ClientSecret
+
+						host = regexp.MustCompile(`/[^.]+?\.`).ReplaceAllString(host, "/*.")
+						host = regexp.MustCompile(`\.[^.]+\.`).ReplaceAllString(host, ".*.")
+						host = regexp.MustCompile(`\.[^.]+\:`).ReplaceAllString(host, ".*:")
+						ClientSecret = "*******"
+
 						s.Reply(fmt.Sprintf("请选择要编辑的属性(u返回,q退出,wq保存)：\n%s", strings.Join(
 							[]string{
 								fmt.Sprintf("1. 容器备注 - %s", ql.Name),
-								fmt.Sprintf("2. 面板地址 - %s", ql.Host),
+								fmt.Sprintf("2. 面板地址 - %s", host),
 								fmt.Sprintf("3. ClientID - %s", ql.ClientID),
-								fmt.Sprintf("4. ClientSecret - %s", ql.ClientSecret),
+								fmt.Sprintf("4. ClientSecret - %s", ClientSecret),
 								fmt.Sprintf("5. %s", t),
 								fmt.Sprintf("6. %s", ju),
+								fmt.Sprintf("7. %s", jy),
+								fmt.Sprintf("t. %s", ts),
+								fmt.Sprintf("8. 权重 - %d", ql.Weight),
+								fmt.Sprintf("9. 大车头 - %s", strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ct, -1), "｜")),
+								fmt.Sprintf("10. 小车头 - %s", strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ql.Chetou, -1), "｜")),
+								fmt.Sprintf("11. 大钉子户 - %s", strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ps, -1), "｜")),
+								fmt.Sprintf("12. 小钉子户 - %s", strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ql.Pins, -1), "｜")),
 							}, "\n")))
 						switch s.Await(s, nil) {
 						default:
@@ -221,13 +297,32 @@ func init() {
 							ql.Default = !ql.Default
 						case "6":
 							ql.AggregatedMode = !ql.AggregatedMode
+						case "7":
+							ql.Disable = !ql.Disable
+						case "t":
+							ql.Transfer = !ql.Transfer
+						case "8":
+							s.Reply("请输入权重：")
+							ql.Weight = core.Int(s.Await(s, nil).(string))
+						case "9":
+							s.Reply("请输入大车头：")
+							ct = regexp.MustCompile(`\s+`).ReplaceAllString(s.Await(s, nil).(string), " ")
+						case "10":
+							s.Reply("请输入小车头：")
+							ql.Chetou = strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(regexp.MustCompile(`\s+`).ReplaceAllString(s.Await(s, nil).(string), " "), -1), " ")
+						case "11":
+							s.Reply("请输入大钉子户：")
+							ps = regexp.MustCompile(`\s+`).ReplaceAllString(s.Await(s, nil).(string), " ")
+						case "12":
+							s.Reply("请输入小钉子户：")
+							ql.Pins = strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(regexp.MustCompile(`\s+`).ReplaceAllString(s.Await(s, nil).(string), " "), -1), " ")
 						case "u":
 							goto hh
 						case "q":
 							goto stop
 						case "!q", "q!":
 							return "强制退出。"
-						case "wq", "qw":
+						case "wq", "qw", "qw!", "!wq":
 							goto save
 						}
 					}
@@ -242,8 +337,9 @@ func init() {
 					SetQLS(nn)
 					d, _ := json.Marshal(nn)
 					qinglong.Set("QLS", string(d))
+					qinglong.Set("pins", strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ps, -1), " "))
+					qinglong.Set("chetou", strings.Join(regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ct, -1), " "))
 					return "已保存修改。"
-
 				},
 			},
 		})
@@ -296,6 +392,12 @@ func (ql *QingLong) GetNumber() int {
 	return ql.Number
 }
 
+func (ql *QingLong) GetWeight() int {
+	ql.RLock()
+	defer ql.RUnlock()
+	return ql.Weight
+}
+
 func (ql *QingLong) SetClientID(i string) {
 	ql.Lock()
 	defer ql.Unlock()
@@ -326,10 +428,43 @@ func (ql *QingLong) SetHost(i string) {
 	ql.Host = i
 }
 
+func (ql *QingLong) GetTail() string {
+	ql.RLock()
+	defer ql.RUnlock()
+	if GetQLSLen() == 1 {
+		return ""
+	}
+	return fmt.Sprintf("	——来自%s", ql.Name)
+}
+
 func (ql *QingLong) GetHost() string {
 	ql.RLock()
 	defer ql.RUnlock()
 	return ql.Host
+}
+
+func (ql *QingLong) GetPinsArray() []string {
+	ql.RLock()
+	defer ql.RUnlock()
+	return regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ql.Pins, -1)
+}
+
+func (ql *QingLong) GetPins() string {
+	ql.RLock()
+	defer ql.RUnlock()
+	return ql.Pins
+}
+
+func (ql *QingLong) GetChetouArray() []string {
+	ql.RLock()
+	defer ql.RUnlock()
+	return regexp.MustCompile(`[^\s&@｜]*`).FindAllString(ql.Chetou, -1)
+}
+
+func (ql *QingLong) GetChetou() string {
+	ql.RLock()
+	defer ql.RUnlock()
+	return ql.Chetou
 }
 
 func (ql *QingLong) SetName(i string) {
@@ -442,7 +577,7 @@ func Req(p interface{}, ps ...interface{}) (*QingLong, error) {
 			ql = nn[0]
 		}
 	}
-	if ql == nil {
+	if ql == nil && s != nil {
 		if len(nn) > 1 {
 			if s != nil {
 				ls := []string{}
@@ -471,6 +606,30 @@ func Req(p interface{}, ps ...interface{}) (*QingLong, error) {
 				ql = nn[i]
 				if s != nil {
 					s.Reply(fmt.Sprintf("已默认选择容器%s", ql.Name))
+				}
+				break
+			}
+		}
+	}
+
+	if ql == nil {
+		for i := range nn {
+			if nn[i].AggregatedMode {
+				ql = nn[i]
+				if s != nil {
+					s.Reply(fmt.Sprintf("已选择聚合容器%s", ql.Name))
+				}
+				break
+			}
+		}
+	}
+
+	if ql == nil {
+		for i := range nn {
+			if !nn[i].AggregatedMode {
+				ql = nn[i]
+				if s != nil {
+					s.Reply(fmt.Sprintf("已选择普通容器%s", ql.Name))
 				}
 				break
 			}
@@ -539,8 +698,12 @@ func Req(p interface{}, ps ...interface{}) (*QingLong, error) {
 			for _, v := range regexp.MustCompile(`"_id":"(\d+)",`).FindAllStringSubmatch(s, -1) {
 				s = strings.Replace(s, v[0], `"id":`+v[1]+`,`, -1)
 			}
+			if regexp.MustCompile(`^\[\s"`).FindString(s) != "" {
+				s = strings.ReplaceAll(s, `"`, "")
+			}
 			body = []byte(s)
 		}
+		// logs.Info(string(body))
 		req.Body(body)
 	}
 	data, err := req.Bytes()
@@ -549,7 +712,6 @@ func Req(p interface{}, ps ...interface{}) (*QingLong, error) {
 	// 	ql.SetToken("")
 	// 	goto start
 	// }
-
 	if err != nil {
 		return nil, err
 	}
@@ -630,22 +792,54 @@ func QinglongSC(s core.Sender) (error, []*QingLong) {
 	}
 	ls := []string{}
 	for i := range nn {
-		ls = append(ls, fmt.Sprintf("%d. %s", i+1, nn[i].Name))
+		ls = append(ls, fmt.Sprintf("%d. 容器(%s)", i+1, nn[i].Name))
 	}
-	s.Reply("请选择容器：\n" + strings.Join(ls, "\n"))
-	r := s.Await(s, func(s core.Sender) interface{} {
-		return core.Range([]int{1, len(nn)})
-	}, time.Second*10)
+	ls = append(ls, "a. 所有容器")
+	ls = append(ls, "b. 所有聚合容器")
+	ls = append(ls, "c. 所有普通容器")
+	s.Reply("请选择容器：(q退出)\n" + strings.Join(ls, "\n"))
+	r := s.Await(s, nil, time.Second*10)
 	switch r {
 	case nil:
-		s.Reply()
 		return errors.New("你没有选择容器。"), []*QingLong{}
-	default:
-		index := r.(int) - 1
-		if index != len(nn) {
-			return nil, []*QingLong{nn[index]}
-		} else {
-			return nil, nn
+	case "q":
+		return errors.New("你已取消选择容器。"), nil
+	case "a":
+		s.AtLast()
+		return nil, nn
+	case "b":
+		t := []*QingLong{}
+		for i := range nn {
+			if nn[i].AggregatedMode {
+				t = append(t, nn[i])
+			}
 		}
+		if len(t) == 0 {
+			return errors.New("你没有设置聚合容器。"), nil
+		}
+		s.AtLast()
+		return nil, t
+	case "c":
+		t := []*QingLong{}
+		for i := range nn {
+			if !nn[i].AggregatedMode {
+				t = append(t, nn[i])
+			}
+		}
+		if len(t) == 0 {
+			return errors.New("你没有设置普通容器。"), nil
+		}
+		s.AtLast()
+		return nil, t
+	default:
+		str := r.(string)
+
+		for i := range nn {
+			if fmt.Sprint(i+1) == str {
+				return nil, []*QingLong{nn[i]}
+			}
+		}
+
+		return errors.New("输入错误，已取消。"), nil
 	}
 }
