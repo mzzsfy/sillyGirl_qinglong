@@ -14,6 +14,7 @@ import (
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/buger/jsonparser"
 	"github.com/cdle/sillyGirl/core"
+	"github.com/cdle/sillyGirl/utils"
 )
 
 type QingLong struct {
@@ -37,7 +38,7 @@ type QingLong struct {
 }
 
 // var Config *QingLong
-var qinglong = core.NewBucket("qinglong")
+var qinglong = core.MakeBucket("qinglong")
 var qLS = []*QingLong{}
 var qLSLock = new(sync.RWMutex)
 
@@ -120,7 +121,7 @@ func init() {
 					var ql *QingLong
 					var ls []string
 					nn := []*QingLong{}
-					sss := qinglong.Get("QLS")
+					sss := qinglong.GetString("QLS")
 					json.Unmarshal([]byte(sss), &nn)
 					t := ""
 					ju := ""
@@ -128,8 +129,8 @@ func init() {
 					ts := ""
 				hh:
 					ls = []string{}
-					ps := qinglong.Get("pins")
-					ct := qinglong.Get("chetou")
+					ps := qinglong.GetString("pins")
+					ct := qinglong.GetString("chetou")
 					cs := []chan bool{}
 					for i := range nn {
 						c := make(chan bool)
@@ -186,7 +187,7 @@ func init() {
 						ql = &QingLong{}
 						nn = append(nn, ql)
 					}
-					i = core.Int(is)
+					i = utils.Int(is)
 					if i < 0 && i >= -len(nn) {
 						for j := range nn {
 							if j == -i-1 {
@@ -303,7 +304,7 @@ func init() {
 							ql.Transfer = !ql.Transfer
 						case "8":
 							s.Reply("请输入权重：")
-							ql.Weight = core.Int(s.Await(s, nil).(string))
+							ql.Weight = utils.Int(s.Await(s, nil).(string))
 						case "9":
 							s.Reply("请输入大车头：")
 							ct = regexp.MustCompile(`\s+`).ReplaceAllString(s.Await(s, nil).(string), " ")
@@ -348,14 +349,14 @@ func init() {
 }
 
 func initqls() {
-	s := qinglong.Get("QLS")
+	s := qinglong.GetString("QLS")
 	nn := []*QingLong{}
 	json.Unmarshal([]byte(s), &nn)
 	if len(nn) == 0 {
 		Config := &QingLong{}
-		Config.Host = regexp.MustCompile(`^(https?://[\.\w]+:?\d*)`).FindString(qinglong.Get("host"))
-		Config.ClientID = qinglong.Get("client_id")
-		Config.ClientSecret = qinglong.Get("client_secret")
+		Config.Host = regexp.MustCompile(`^(https?://[\.\w]+:?\d*)`).FindString(qinglong.GetString("host"))
+		Config.ClientID = qinglong.GetString("client_id")
+		Config.ClientSecret = qinglong.GetString("client_secret")
 		if Config.Host != "" {
 			nn = append(nn, Config)
 			d, _ := json.Marshal(nn)
